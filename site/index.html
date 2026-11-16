@@ -46,6 +46,7 @@ small{color:var(--mute)}
     <div><label for="assoc">Nom de l’association</label><input type="text" id="assoc" value="Association des Étudiants Sénégalais"></div>
     <div><label for="sigle">Sigle</label><input type="text" id="sigle" value="AES"></div>
     <div><label for="annee">Année universitaire</label><input type="text" id="annee" value="2026-2027"></div>
+    <div><label for="logoFile">Logo (PNG ou JPG, facultatif)</label><input type="file" id="logoFile" accept="image/*"></div>
     <div><label for="file">Fichier CSV des membres</label><input type="file" id="file" accept=".csv,text/csv"></div>
   </div>
   <label class="chk"><input type="checkbox" id="onlyPaid"> Seulement les membres dont le statut est « payé »</label>
@@ -55,7 +56,7 @@ small{color:var(--mute)}
     <button id="zip" class="alt" disabled>Télécharger les images (ZIP)</button>
     <button id="tpl" class="alt">Télécharger un CSV modèle</button>
   </div>
-  <p><small>Colonnes reconnues : nom, prénom, université, ville, numéro, statut. Seuls nom et prénom sont obligatoires ; le numéro est créé automatiquement s’il manque.</small></p>
+  <p><small>Colonnes reconnues : nom, prénom, université, filière, niveau, année d’arrivée en France, ville, numéro, statut. Seuls nom et prénom sont obligatoires ; le numéro est créé automatiquement s’il manque.</small></p>
 </div>
 
 <p id="info"></p><p id="err"></p>
@@ -72,43 +73,50 @@ const W=1011,H=638; // 85,6 x 54 mm à 300 dpi
 let members=[];
 
 const norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
-const KEYS={nom:["nom","lastname","name"],prenom:["prenom","prenoms","firstname"],univ:["universite","ecole","etablissement","univ"],ville:["ville","city"],num:["numero","numeromembre","nmembre","id","matricule"],statut:["statut","paye","paiement","cotisation"]};
+const KEYS={nom:["nom","lastname","name"],prenom:["prenom","prenoms","firstname"],univ:["universite","ecole","etablissement","univ"],ville:["ville","city"],num:["numero","numeromembre","nmembre","id","matricule"],statut:["statut","paye","paiement","cotisation"],filiere:["filiere","specialite","formation"],niveau:["niveau","annee","diplome"],arrivee:["anneedarriveeenfrance","anneearrivee","arrivee"]};
 function pick(row,k){for(const h in row){if(KEYS[k].includes(norm(h)))return (row[h]||"").trim()}return ""}
 const isPaid=v=>["oui","paye","payee","ok","1","true","vrai","yes"].includes(norm(v));
 
 function star(c,x,y,r,col){c.fillStyle=col;c.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,d=i%2?r*.382:r;c.lineTo(x+Math.cos(a)*d,y+Math.sin(a)*d)}c.closePath();c.fill()}
 function fit(c,t,max,size,weight){let s=size;do{c.font=`${weight} ${s}px "Bricolage Grotesque",sans-serif`;s-=2}while(c.measureText(t).width>max&&s>20);return}
 
+const LOGO_SVG=`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="#00853F"/><circle cx="100" cy="100" r="86" fill="none" stroke="#FDEF42" stroke-width="4"/><g fill="#FDEF42"><path d="M70 158Q92 130 88 100L112 100Q108 130 130 158Z"/><path d="M92 104L58 76M100 102L100 66M108 104L142 76" stroke="#FDEF42" stroke-width="9" stroke-linecap="round" fill="none"/><ellipse cx="58" cy="70" rx="30" ry="17"/><ellipse cx="100" cy="55" rx="34" ry="20"/><ellipse cx="142" cy="70" rx="30" ry="17"/><ellipse cx="100" cy="160" rx="54" ry="6"/></g></svg>`;
+const logoDefault=new Image();logoDefault.src="data:image/svg+xml;utf8,"+encodeURIComponent(LOGO_SVG);
+let logo=logoDefault;logoDefault.onload=()=>members.length&&render();
+
+function wrap(c,t,max){const L=[];let l="";t.split(" ").forEach(x=>{const n=l?l+" "+x:x;if(c.measureText(n).width>max&&l){L.push(l);l=x}else l=n});if(l)L.push(l);return L}
+
 function drawCard(m){
   const cv=document.createElement("canvas");cv.width=W;cv.height=H;const c=cv.getContext("2d");
+  const G="#00853F",Y="#FDEF42",R="#E31B23",PW=360,X=400,D=110,F='"Bricolage Grotesque",sans-serif';
   c.fillStyle="#FBF7EC";c.fillRect(0,0,W,H);
-  // panneau vert
-  c.fillStyle="#00853F";c.fillRect(0,0,300,H-26);
-  star(c,150,90,38,"#F2C500");
-  c.fillStyle="#F2C500";c.beginPath();c.arc(150,300,92,0,7);c.fill();
-  c.fillStyle="#00853F";c.textAlign="center";c.textBaseline="middle";
-  c.font='800 84px "Bricolage Grotesque",sans-serif';
-  c.fillText((m.prenom[0]||"")+(m.nom[0]||""),150,306);
-  c.font='700 30px "Bricolage Grotesque",sans-serif';c.fillStyle="#FBF7EC";
-  c.fillText($("sigle").value,150,470);
-  c.font='500 22px "Bricolage Grotesque",sans-serif';c.fillText($("annee").value,150,508);
-  // bande tricolore
-  [["#00853F",0],["#F2C500",W/3],["#D62828",2*W/3]].forEach(([k,x])=>{c.fillStyle=k;c.fillRect(x,H-26,W/3+1,26)});
-  // textes
+  // drapeau du Sénégal : trois bandes verticales, étoile verte au centre
+  c.fillStyle=G;c.fillRect(0,0,PW/3,H);
+  c.fillStyle=Y;c.fillRect(PW/3,0,PW/3,H);
+  c.fillStyle=R;c.fillRect(2*PW/3,0,PW/3+1,H);
+  star(c,PW/2,H/2,52,G);
+  // logo + nom de l’association
+  if(logo&&logo.complete&&logo.naturalWidth){const k=Math.min(D/logo.naturalWidth,D/logo.naturalHeight),w=logo.naturalWidth*k,h=logo.naturalHeight*k;c.drawImage(logo,X+(D-w)/2,40+(D-h)/2,w,h)}
   c.textAlign="left";c.textBaseline="alphabetic";
-  c.fillStyle="#5B6B60";c.font='700 24px "Bricolage Grotesque",sans-serif';
-  c.fillText($("assoc").value,340,70,640);
+  c.fillStyle="#5B6B60";c.font=`700 26px ${F}`;
+  const tx=X+D+24,lines=wrap(c,$("assoc").value,W-40-tx).slice(0,3);
+  lines.forEach((t,i)=>c.fillText(t,tx,95+8-(lines.length-1)*16+i*32));
+  // identité
+  const MX=W-40-X;
   c.fillStyle="#14281D";
-  fit(c,m.prenom,640,64,"500");c.fillText(m.prenom,340,190);
-  fit(c,m.nom.toUpperCase(),640,76,"800");c.fillText(m.nom.toUpperCase(),340,268);
-  c.fillStyle="#5B6B60";c.font='500 30px "Bricolage Grotesque",sans-serif';
+  fit(c,m.prenom,MX,64,"500");c.fillText(m.prenom,X,225);
+  fit(c,m.nom.toUpperCase(),MX,76,"800");c.fillText(m.nom.toUpperCase(),X,303);
+  c.fillStyle="#5B6B60";
   const sub=[m.univ,m.ville].filter(Boolean).join(", ");
-  if(sub){fit(c,sub,640,30,"500");c.fillText(sub,340,325,640)}
-  c.fillStyle="#14281D";c.font='700 34px "Bricolage Grotesque",sans-serif';
-  c.fillText("N° "+m.num,340,540);
+  if(sub){fit(c,sub,MX,30,"500");c.fillText(sub,X,350,MX)}
+  const l2=[m.filiere,m.niveau].filter(Boolean).join(" · ");
+  if(l2){c.fillStyle="#14281D";fit(c,l2,MX,32,"700");c.fillText(l2,X,394,MX)}
+  if(m.arrivee){c.fillStyle="#5B6B60";c.font=`500 26px ${F}`;c.fillText("En France depuis "+m.arrivee,X,436,400)}
+  c.fillStyle="#14281D";c.font=`700 34px ${F}`;c.fillText("N° "+m.num,X,540);
+  c.fillStyle="#5B6B60";c.font=`500 24px ${F}`;c.fillText($("sigle").value+" · "+$("annee").value,X,584);
   // QR
   try{const q=qrcode(0,"M");q.addData(`${$("sigle").value}|${m.num}`);q.make();
-    const n=q.getModuleCount(),s=Math.floor(170/n),o=W-40-n*s,y0=H-40-26-n*s+10;
+    const n=q.getModuleCount(),s=Math.floor(170/n),o=W-40-n*s,y0=H-40-n*s;
     c.fillStyle="#fff";c.fillRect(o-10,y0-10,n*s+20,n*s+20);c.fillStyle="#14281D";
     for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))c.fillRect(o+k*s,y0+r*s,s,s)}catch(e){}
   return cv;
@@ -118,12 +126,12 @@ function load(text){
   $("err").textContent="";
   const res=Papa.parse(text,{header:true,skipEmptyLines:true});
   let year=new Date().getFullYear(),i=0;
-  members=res.data.map(r=>({nom:pick(r,"nom"),prenom:pick(r,"prenom"),univ:pick(r,"univ"),ville:pick(r,"ville"),num:pick(r,"num"),statut:pick(r,"statut")}))
+  members=res.data.map(r=>({nom:pick(r,"nom"),prenom:pick(r,"prenom"),univ:pick(r,"univ"),ville:pick(r,"ville"),num:pick(r,"num"),statut:pick(r,"statut"),filiere:pick(r,"filiere"),niveau:pick(r,"niveau"),arrivee:pick(r,"arrivee")}))
    .filter(m=>m.nom||m.prenom).map(m=>({...m,num:m.num||`SEN-${year}-${String(++i).padStart(3,"0")}`}));
   if(!members.length){$("err").textContent="Aucun membre trouvé. Vérifiez que la première ligne contient les colonnes « nom » et « prénom ».";return}
   render();
 }
-function current(){return $("onlyPaid").checked?members.filter(m=>isPaid(m.statut)):members}
+function current(){return $("onlyPaid").checked&&members.some(m=>m.statut)?members.filter(m=>isPaid(m.statut)):members}
 async function render(){
   await document.fonts.load('800 40px "Bricolage Grotesque"').catch(()=>{});
   const list=current(),g=$("grid");g.innerHTML="";
@@ -134,6 +142,7 @@ async function render(){
 function save(url,name){const a=document.createElement("a");a.href=url;a.download=name;a.click()}
 
 $("file").onchange=e=>{const f=e.target.files[0];if(f)f.text().then(load)};
+$("logoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{logo=im;members.length&&render()};im.src=URL.createObjectURL(f)};
 ["assoc","sigle","annee"].forEach(id=>$(id).oninput=()=>members.length&&render());
 $("onlyPaid").onchange=()=>members.length&&render();
 
@@ -156,7 +165,7 @@ $("zip").onclick=async()=>{
   save(URL.createObjectURL(await z.generateAsync({type:"blob"})),"cartes-membres.zip");
 };
 $("tpl").onclick=()=>{
-  const csv="nom,prenom,universite,ville,numero,statut\nDiop,Awa,Université de Lille,Lille,,oui\nFall,Moussa,Université de Rouen,Rouen,,non\nNdiaye,Fatou,Sorbonne Université,Paris,,oui\n";
+  const csv="Nom,Prénom,Université,Filière,Niveau,Année d’arrivée en France,Statut\nSECK,Adji Bousso,Université Avignon,Géomatique,Master 2,2023,oui\n";
   save(URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv"})),"membres-modele.csv");
 };
 </script>
