@@ -49,16 +49,15 @@ small{color:var(--mute)}
 
 <div class="box">
   <div class="row">
-    <div><label for="assoc">Nom de l’association</label><input type="text" id="assoc" value="Association des Étudiants Sénégalais d'Avignon"></div>
+    <div><label for="assoc">Nom de l’association</label><input type="text" id="assoc" value="Association des Étudiants Sénégalais d’Avignon"></div>
     <div><label for="sous">Sous-titre</label><input type="text" id="sous" value="Carte de membre officielle"></div>
     <div><label for="sigle">Sigle</label><input type="text" id="sigle" value="AES"></div>
-    <div><label for="annee">Validité (année universitaire)</label><input type="text" id="annee" value="2026-2027"></div>
+    <div><label for="annee">Validité par défaut (si absente du CSV)</label><input type="text" id="annee" value="2026-2027"></div>
     <div><label for="site">Site web (bas de carte)</label><input type="text" id="site" value="www.votre-site.org"></div>
     <div><label for="logoFile">Logo (PNG ou JPG, facultatif)</label><input type="file" id="logoFile" accept="image/*"></div>
     <div><label for="photoFiles">Photos des membres (facultatif)</label><input type="file" id="photoFiles" accept="image/*" multiple></div>
     <div><label for="file">Fichier CSV des membres</label><input type="file" id="file" accept=".csv,text/csv"></div>
   </div>
-  <label class="chk"><input type="checkbox" id="onlyPaid"> Seulement les membres dont le statut est « payé »</label>
   <label class="chk"><input type="checkbox" id="sheet"> PDF en planches A4 (10 cartes par page) pour imprimer et découper</label>
   <div class="actions">
     <button id="pdf" disabled>Télécharger le PDF</button>
@@ -66,7 +65,7 @@ small{color:var(--mute)}
     <button id="tpl" class="alt">Télécharger un CSV modèle</button>
     <button id="demo" class="alt">Voir un exemple</button>
   </div>
-  <p><small>Colonnes reconnues : nom, prénom, université, ville, filière, niveau, année d’arrivée en France, numéro, statut, photo. Seuls nom et prénom sont obligatoires ; le numéro est créé automatiquement s’il manque.<br>Photos : sélectionnez toutes les photos d’un coup. Chaque fichier est associé à son membre par le nom indiqué dans la colonne « photo » du CSV (ex. adji-bousso-seck.jpg), ou à défaut par « prénom nom » ou par le numéro du membre. Sans photo, la carte affiche une silhouette.<br><b>Plus simple :</b> après avoir chargé le CSV (ou cliqué sur « Voir un exemple »), utilisez le bouton « Ajouter une photo » sous chaque carte.</small></p>
+  <p><small>Colonnes reconnues : nom, prénom, statut (Présidente, Trésorier, Membre actif…), validité, et en option université, ville, filière, niveau, année d’arrivée en France, numéro, photo. Seuls nom et prénom sont obligatoires ; le numéro est créé automatiquement s’il manque. Le séparateur « , » ou « ; » est détecté tout seul. Un champ vide n’apparaît pas sur la carte.<br>Photos : sélectionnez toutes les photos d’un coup. Chaque fichier est associé à son membre par le nom indiqué dans la colonne « photo » du CSV (ex. adji-bousso-seck.jpg), ou à défaut par « prénom nom » ou par le numéro du membre. Sans photo, la carte affiche une silhouette.<br><b>Plus simple :</b> après avoir chargé le CSV (ou cliqué sur « Voir un exemple »), utilisez le bouton « Ajouter une photo » sous chaque carte.</small></p>
 </div>
 
 <p id="info"></p><p id="err"></p>
@@ -85,7 +84,7 @@ const F='Inter,system-ui,sans-serif';
 let members=[];
 
 const norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
-const KEYS={nom:["nom","lastname","name"],prenom:["prenom","prenoms","firstname"],univ:["universite","ecole","etablissement","univ"],ville:["ville","city"],num:["numero","numeromembre","nmembre","id","matricule"],statut:["statut","paye","paiement","cotisation"],filiere:["filiere","specialite","formation"],niveau:["niveau","annee","diplome"],arrivee:["anneedarriveeenfrance","anneearrivee","arrivee"],photo:["photo","image","portrait","fichierphoto","photographie"]};
+const KEYS={nom:["nom","lastname","name"],prenom:["prenom","prenoms","firstname"],univ:["universite","ecole","etablissement","univ"],ville:["ville","city"],num:["numero","numeromembre","nmembre","id","matricule"],statut:["statut","statutmembre","fonction","role","paye","paiement","cotisation"],validite:["validite","validejusqua","validiteannee","expiration"],filiere:["filiere","specialite","formation"],niveau:["niveau","annee","diplome"],arrivee:["anneedarriveeenfrance","anneearrivee","arrivee"],photo:["photo","image","portrait","fichierphoto","photographie"]};
 function pick(row,k){for(const h in row){if(KEYS[k].includes(norm(h)))return (row[h]||"").trim()}return ""}
 const isPaid=v=>["oui","paye","payee","ok","1","true","vrai","yes"].includes(norm(v));
 const numOf=m=>m.num||`${$("sigle").value}-${new Date().getFullYear()}-${String(m.idx).padStart(3,"0")}`;
@@ -171,11 +170,12 @@ function drawCard(m){
   c.fillStyle="#0B1220";fit(c,full,MX,72,"800");c.fillText(full,X,232,MX);
   const role="Étudiant(e)"+(m.filiere?" en "+m.filiere:"");
   c.fillStyle="#3B82F6";fit(c,role,MX,34,"600");c.fillText(role,X,282,MX);
-  field(c,"Statut",statutOf(m),X,336,X2-X-30);
-  field(c,"Niveau",m.niveau,X2,336,W-40-X2);
-  field(c,"Université",[m.univ,m.ville].filter(Boolean).join(", "),X,412,MX);
-  field(c,"Validité",$("annee").value,X,488,X2-X-30);
-  field(c,"En France depuis",m.arrivee,X2,488,W-40-X2);
+  const flds=[["Statut",statutOf(m),0],["Niveau",m.niveau,0],["Université",[m.univ,m.ville].filter(Boolean).join(", "),1],["Validité",m.validite||$("annee").value,0],["En France depuis",m.arrivee,0]].filter(f=>f[1]);
+  const rows=[];let cur=[];  // 2 colonnes ; l'université prend toute la ligne
+  flds.forEach(f=>{if(f[2]){if(cur.length){rows.push(cur);cur=[]}rows.push([f])}else{cur.push(f);if(cur.length===2){rows.push(cur);cur=[]}}});
+  if(cur.length)rows.push(cur);
+  const fy=rows.length>=3?336:rows.length===2?372:410; // bloc recentré quand il y a peu de champs
+  rows.forEach((r,i)=>r.forEach((f,j)=>field(c,f[0],f[1],j?X2:X,fy+i*76,f[2]?MX:(j?W-40-X2:X2-X-30))));
   // signatures + mentions
   c.strokeStyle="#CBD5E1";c.lineWidth=3;
   [[X,X+170],[X+184,X+354]].forEach(([a,b])=>{c.beginPath();c.moveTo(a,556);c.lineTo(b,556);c.stroke()});
@@ -194,13 +194,13 @@ function drawCard(m){
 let shown=12;
 function load(text){
   $("err").textContent="";
-  const res=Papa.parse(text,{header:true,skipEmptyLines:true});
-  members=res.data.map(r=>({nom:pick(r,"nom"),prenom:pick(r,"prenom"),univ:pick(r,"univ"),ville:pick(r,"ville"),num:pick(r,"num"),statut:pick(r,"statut"),filiere:pick(r,"filiere"),niveau:pick(r,"niveau"),arrivee:pick(r,"arrivee"),photo:pick(r,"photo")}))
+  const res=Papa.parse(text.replace(/^\ufeff/,""),{header:true,skipEmptyLines:true});
+  members=res.data.map(r=>({nom:pick(r,"nom"),prenom:pick(r,"prenom"),univ:pick(r,"univ"),ville:pick(r,"ville"),num:pick(r,"num"),statut:pick(r,"statut"),validite:pick(r,"validite"),filiere:pick(r,"filiere"),niveau:pick(r,"niveau"),arrivee:pick(r,"arrivee"),photo:pick(r,"photo")}))
    .filter(m=>m.nom||m.prenom).map((m,i)=>({...m,idx:i+1}));
   if(!members.length){$("err").textContent="Aucun membre trouvé. Vérifiez que la première ligne contient les colonnes « nom » et « prénom ».";return}
   render();
 }
-function current(){return $("onlyPaid").checked&&members.some(m=>m.statut)?members.filter(m=>isPaid(m.statut)):members}
+function current(){return members}
 function cardEl(m){
   const fig=document.createElement("figure");fig.className="card";
   fig.appendChild(drawCard(m));
@@ -240,7 +240,6 @@ $("photoFiles").onchange=e=>{
     .then(()=>members.length&&render());
 };
 ["assoc","sous","sigle","annee","site"].forEach(id=>$(id).oninput=()=>members.length&&render());
-$("onlyPaid").onchange=()=>members.length&&render();
 
 $("pdf").onclick=async()=>{
   await loadFonts();const list=current(),{jsPDF}=window.jspdf;
@@ -260,7 +259,7 @@ $("zip").onclick=async()=>{
   current().forEach(m=>z.file(`carte-${numOf(m)}.png`,drawCard(m).toDataURL("image/png").split(",")[1],{base64:true}));
   save(URL.createObjectURL(await z.generateAsync({type:"blob"})),"cartes-membres.zip");
 };
-const SAMPLE="Nom,Prénom,Université,Ville,Filière,Niveau,Année d’arrivée en France,Statut,Photo\nSECK,Adji Bousso,Université Avignon,Avignon,Géomatique,Master 2,2023,oui,adji-bousso-seck.jpg\n";
+const SAMPLE="Nom;Prénom;Statut;Validité\nSECK;Adji Bousso;Présidente;2026-2027\nDIOP;Moussa;Trésorier;2026-2027\nNDIAYE;Awa;Membre actif;2026-2027\n";
 $("tpl").onclick=()=>save(URL.createObjectURL(new Blob(["\ufeff"+SAMPLE],{type:"text/csv"})),"membres-modele.csv");
 $("demo").onclick=()=>{manual.clear();load(SAMPLE)};
 </script>
