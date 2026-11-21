@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vérifier une carte membre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F6F8F7;--ink:#0F172A;--mute:#5B6B78;--line:#DDE3E0;--green:#00853F;--gold:#F2C500;--red:#D62828;--panel:#fff;--okbg:#E7F6EC;--kobg:#FDECEC;--wbg:#FFF6D6}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0F1B14;--ink:#F1F5F2;--mute:#9DB0A2;--line:#2A3D31;--panel:#16261C;--okbg:#12361F;--kobg:#3A1818;--wbg:#3A3212}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.5}
+main{max-width:720px;margin:0 auto;padding:28px 18px 64px}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.1;margin:0 0 8px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:17px;margin:0 0 10px}
+.sub{color:var(--mute);margin:0 0 22px}
+.bar{width:72px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--green) 0 33.3%,var(--gold) 33.3% 66.6%,var(--red) 66.6%);margin-bottom:20px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px -12px rgba(15,23,42,.12)}
+label{display:block;font-size:14px;font-weight:700;margin:0 0 4px}
+input[type=text],input[type=password],input[type=file],textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:70px;resize:vertical}
+input:focus-visible,button:focus-visible,textarea:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+button,.btn{display:inline-block;font:inherit;font-weight:700;padding:10px 16px;border-radius:8px;border:2px solid var(--green);background:var(--green);color:#fff;cursor:pointer;text-align:center;margin:0}
+button.alt{background:transparent;color:var(--green)}
+@media (prefers-color-scheme:dark){button.alt{color:var(--gold);border-color:var(--gold)}}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:520px){.grid2{grid-template-columns:1fr}}
+small,.mute{color:var(--mute)}
+.chk{display:flex;gap:8px;align-items:center;font-weight:500;margin-top:10px;font-size:14px}
+.chk input{width:18px;height:18px;accent-color:var(--green)}
+video{width:100%;max-height:340px;border-radius:10px;background:#000;margin-top:12px}
+#res{border-radius:14px;padding:20px;margin-bottom:18px;border:2px solid var(--line)}
+#res.ok{background:var(--okbg);border-color:var(--green)}
+#res.ko{background:var(--kobg);border-color:var(--red)}
+#res.warn{background:var(--wbg);border-color:var(--gold)}
+#res .big{font-size:24px;font-weight:800;margin:0 0 10px}
+#res dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:12px 0 0}
+#res dt{color:var(--mute);font-weight:600}
+#res dd{margin:0;font-weight:700;font-size:18px;word-break:break-word}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<div class="bar"></div>
+<h1>Vérifier une carte membre</h1>
+<p class="sub">Scannez le QR code de la carte : la page contrôle qu’il a bien été produit avec la clé de l’association. Tout se passe dans votre navigateur. <a href="index.html">← Générateur de cartes</a></p>
+
+<div class="box">
+  <label for="cle">Clé secrète de l’association</label>
+  <input type="password" id="cle" autocomplete="off" spellcheck="false" placeholder="Collez la clé">
+  <label class="chk"><input type="checkbox" id="show"> Afficher la clé</label>
+  <label class="chk"><input type="checkbox" id="keep"> Retenir la clé sur cet appareil (à éviter sur un téléphone partagé)</label>
+</div>
+
+<div id="res" hidden></div>
+
+<div class="box">
+  <h2>1. Scanner le QR code</h2>
+  <div class="row">
+    <button id="cam">📷 Ouvrir la caméra</button>
+    <button id="stop" class="alt" hidden>Arrêter la caméra</button>
+  </div>
+  <video id="video" playsinline muted hidden></video>
+  <div class="row"><div style="flex:1;min-width:220px"><label for="img">…ou choisir une photo ou capture d’écran du QR code</label><input type="file" id="img" accept="image/*"></div></div>
+  <div style="margin-top:12px"><label for="txt">…ou coller le contenu du QR code</label><textarea id="txt" spellcheck="false" placeholder="Q1|AES-…"></textarea>
+  <div class="row"><button id="chk" class="alt">Vérifier ce texte</button></div></div>
+</div>
+
+<div class="box">
+  <h2>2. Vérifier seulement le matricule</h2>
+  <p class="mute" style="margin-top:0;font-size:14px">Utile si le QR code est illisible. Ce contrôle ne couvre ni le statut ni la validité.</p>
+  <div class="grid2">
+    <div><label for="n">Nom</label><input type="text" id="n"></div>
+    <div><label for="p">Prénom</label><input type="text" id="p"></div>
+  </div>
+  <div style="margin-top:12px"><label for="m">Matricule</label><input type="text" id="m" placeholder="AESA-XXXX-XXXX"></div>
+  <div class="row"><button id="chkId" class="alt">Vérifier le matricule</button></div>
+</div>
+
+<p><small>Une carte « authentique » prouve seulement que ses données ont été produites par l’association. Comparez toujours le nom affiché ici avec la carte et avec une pièce d’identité de la personne : la photo n’est pas protégée.</small></p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+/* ===== Sécurité des cartes : HMAC-SHA-256 (synchrone, sans dépendance) ===== */
+const SHA_K=(()=>{const k=[];let n=2;while(k.length<64){let p=true;for(let i=2;i*i<=n;i++)if(n%i===0){p=false;break}if(p)k.push(Math.floor((Math.cbrt(n)%1)*4294967296));n++}return k})();
+function sha256(m){
+  const l=m.length,pl=((l+9+63)>>6)<<6,p=new Uint8Array(pl);p.set(m);p[l]=0x80;
+  const dv=new DataView(p.buffer);dv.setUint32(pl-4,(l*8)>>>0);dv.setUint32(pl-8,Math.floor(l*8/4294967296));
+  let h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const w=new Uint32Array(64);
+  for(let i=0;i<pl;i+=64){
+    for(let t=0;t<16;t++)w[t]=dv.getUint32(i+t*4);
+    for(let t=16;t<64;t++){const a=w[t-15],b=w[t-2];w[t]=(w[t-16]+((a>>>7|a<<25)^(a>>>18|a<<14)^(a>>>3))+w[t-7]+((b>>>17|b<<15)^(b>>>19|b<<13)^(b>>>10)))|0}
+    let[a,b,c,d,e,f,g,q]=h;
+    for(let t=0;t<64;t++){
+      const t1=(q+((e>>>6|e<<26)^(e>>>11|e<<21)^(e>>>25|e<<7))+((e&f)^(~e&g))+SHA_K[t]+w[t])|0;
+      const t2=(((a>>>2|a<<30)^(a>>>13|a<<19)^(a>>>22|a<<10))+((a&b)^(a&c)^(b&c)))|0;
+      q=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;
+    }
+    h=[h[0]+a|0,h[1]+b|0,h[2]+c|0,h[3]+d|0,h[4]+e|0,h[5]+f|0,h[6]+g|0,h[7]+q|0];
+  }
+  const o=new Uint8Array(32),ov=new DataView(o.buffer);h.forEach((x,i)=>ov.setUint32(i*4,x>>>0));return o;
+}
+function hmac(key,msg){
+  const te=new TextEncoder();let k=te.encode(key);if(k.length>64)k=sha256(k);
+  const ip=new Uint8Array(64).fill(0x36),op=new Uint8Array(64).fill(0x5c);k.forEach((x,i)=>{ip[i]^=x;op[i]^=x});
+  const m=te.encode(msg),a=new Uint8Array(64+m.length);a.set(ip);a.set(m,64);
+  const inner=sha256(a),b=new Uint8Array(96);b.set(op);b.set(inner,64);return sha256(b);
+}
+const B32="0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // alphabet sans I, L, O, U (pas de confusion à la lecture)
+function b32(bytes,n){let bits=0,val=0,out="";for(const b of bytes){val=((val<<8)|b)&0xffff;bits+=8;while(bits>=5&&out.length<n){out+=B32[(val>>>(bits-5))&31];bits-=5}val&=(1<<bits)-1}return out}
+const nrm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
+const fold=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\x20-\x7E]/g,"").replace(/\|/g,"/").trim();
+// matricule : 8 caractères imprévisibles liés au nom et au prénom (impossible à deviner sans la clé)
+function memberId(key,sigle,nom,prenom,dup){const t=b32(hmac(key,"id|"+nrm(nom)+"|"+nrm(prenom)+"|"+(dup||0)),8);return `${sigle}-${t.slice(0,4)}-${t.slice(4)}`}
+// sceau : 16 caractères (80 bits) liés au matricule, au nom, au prénom, au statut et à la validité
+function seal(key,mat,nom,prenom,statut,valid){return b32(hmac(key,"seal|"+[mat,nom,prenom,statut,valid].map(nrm).join("|")),16)}
+function qrPayload(key,mat,nom,prenom,statut,valid){
+  const f=[fold(nom).toUpperCase(),fold(prenom),fold(statut),fold(valid)];
+  return ["Q1",mat,...f,seal(key,mat,...f)].join("|");
+}
+function checkPayload(key,text){
+  const p=String(text||"").trim().split("|");
+  if(p.length!==7||p[0]!=="Q1")return{ok:false,why:"format"};
+  const[,mat,nom,prenom,statut,valid,tag]=p;
+  return{ok:seal(key,mat,nom,prenom,statut,valid)===tag,mat,nom,prenom,statut,valid};
+}
+function checkId(key,mat,nom,prenom){
+  const sigle=String(mat).trim().toUpperCase().split("-")[0];
+  for(let d=0;d<10;d++)if(memberId(key,sigle,nom,prenom,d)===String(mat).trim().toUpperCase())return true;return false;
+}
+
+// ---------- interface ----------
+const KEYSTORE="aesa_cle_verif";
+try{const k=localStorage.getItem(KEYSTORE);if(k){$("cle").value=k;$("keep").checked=true}}catch(e){}
+const keyOf=()=>$("cle").value.trim();
+$("show").onchange=()=>$("cle").type=$("show").checked?"text":"password";
+function saveKey(){try{if($("keep").checked)localStorage.setItem(KEYSTORE,keyOf());else localStorage.removeItem(KEYSTORE)}catch(e){}}
+$("cle").oninput=saveKey;$("keep").onchange=saveKey;
+
+function show(cls,title,rows,note){
+  const r=$("res");r.hidden=false;r.className=cls;r.innerHTML="";
+  const h=document.createElement("p");h.className="big";h.textContent=title;r.appendChild(h);
+  if(note){const p=document.createElement("div");p.textContent=note;r.appendChild(p)}
+  if(rows&&rows.length){const dl=document.createElement("dl");rows.forEach(([a,b])=>{const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=a;dd.textContent=b;dl.append(dt,dd)});r.appendChild(dl)}
+  r.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+function needKey(){if(keyOf())return false;show("warn","Clé manquante","","Entrez d’abord la clé secrète de l’association.");return true}
+
+function verifyText(text){
+  if(needKey())return;
+  const r=checkPayload(keyOf(),text);
+  if(r.why==="format")return show("ko","❌ Ce n’est pas un QR code de carte","","Le contenu lu n’a pas le format attendu : cette carte n’a pas été produite par le générateur de l’association.");
+  if(!r.ok)return show("ko","❌ Carte NON valide","","Le sceau ne correspond pas : les informations ont été modifiées, ou la carte n’a pas été produite avec la clé de l’association. Ne l’acceptez pas.");
+  const rows=[["Nom",r.nom+" "+r.prenom],["Statut",r.statut],["Validité",r.valid],["Matricule",r.mat]];
+  const years=(r.valid.match(/20\d{2}/g)||[]).map(Number),last=years.length?Math.max(...years):0,now=new Date().getFullYear();
+  if(last&&last<now)show("warn","⚠ Carte authentique, mais validité dépassée ?",rows,"Les informations sont bien celles de l’association, mais la validité indiquée semble terminée.");
+  else show("ok","✅ Carte authentique",rows,"Comparez ces informations avec la carte et avec une pièce d’identité.");
+}
+$("chk").onclick=()=>verifyText($("txt").value);
+$("chkId").onclick=()=>{
+  if(needKey())return;const n=$("n").value,p=$("p").value,m=$("m").value;
+  if(!n.trim()||!p.trim()||!m.trim())return show("warn","Champs incomplets","","Renseignez le nom, le prénom et le matricule.");
+  if(checkId(keyOf(),m,n,p))show("ok","✅ Matricule conforme",[["Nom",n.trim().toUpperCase()+" "+p.trim()],["Matricule",m.trim().toUpperCase()]],"Ce matricule correspond bien à ce nom et ce prénom. Le statut et la validité ne sont pas contrôlés : scannez le QR code pour cela.");
+  else show("ko","❌ Matricule NON conforme","","Ce matricule ne correspond pas à ce nom et prénom avec la clé de l’association.");
+};
+
+// ---------- scan caméra / image ----------
+let stream=null;
+function decode(data,w,h,both){
+  if(!window.jsQR){show("warn","Lecteur de QR indisponible","","Le lecteur n’a pas pu être chargé (connexion ?). Collez le contenu du QR code dans la zone de texte.");return null}
+  return jsQR(data,w,h,{inversionAttempts:both?"attemptBoth":"dontInvert"});
+}
+function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}$("video").hidden=true;$("stop").hidden=true;$("cam").hidden=false}
+$("stop").onclick=stopCam;
+$("cam").onclick=async()=>{
+  if(needKey())return;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+    const v=$("video");v.srcObject=stream;v.hidden=false;await v.play();$("stop").hidden=false;$("cam").hidden=true;
+    const cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});
+    (function loop(){
+      if(!stream)return;
+      if(v.readyState===v.HAVE_ENOUGH_DATA&&v.videoWidth){
+        cv.width=v.videoWidth;cv.height=v.videoHeight;cx.drawImage(v,0,0);
+        const d=cx.getImageData(0,0,cv.width,cv.height),r=decode(d.data,d.width,d.height,false);
+        if(r&&r.data){stopCam();verifyText(r.data);return}
+      }
+      requestAnimationFrame(loop);
+    })();
+  }catch(e){show("warn","Caméra indisponible","","Autorisez l’accès à la caméra (la page doit être ouverte en https), ou utilisez une photo du QR code ci-dessous.")}
+};
+$("img").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;if(needKey()){e.target.value="";return}
+  const im=new Image(),u=URL.createObjectURL(f);
+  im.onload=()=>{
+    const k=Math.min(1,1400/Math.max(im.naturalWidth,im.naturalHeight)),cv=document.createElement("canvas");
+    cv.width=Math.round(im.naturalWidth*k);cv.height=Math.round(im.naturalHeight*k);
+    const cx=cv.getContext("2d");cx.drawImage(im,0,0,cv.width,cv.height);URL.revokeObjectURL(u);
+    const d=cx.getImageData(0,0,cv.width,cv.height),r=decode(d.data,d.width,d.height,true);
+    if(r&&r.data)verifyText(r.data);else if(window.jsQR)show("warn","QR code introuvable","","Aucun QR code lisible sur cette image. Rapprochez-vous, évitez les reflets, ou collez le contenu du QR code.");
+  };
+  im.onerror=()=>show("warn","Image illisible","","Cette image n’a pas pu être ouverte.");
+  im.src=u;e.target.value="";
+};
+</script>
+</body>
+</html>
