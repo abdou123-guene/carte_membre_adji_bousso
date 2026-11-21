@@ -53,7 +53,6 @@ small{color:var(--mute)}
     <div><label for="sous">Sous-titre</label><input type="text" id="sous" value="Carte de membre officielle"></div>
     <div><label for="sigle">Sigle</label><input type="text" id="sigle" value="AES"></div>
     <div><label for="annee">Validité par défaut (si absente du CSV)</label><input type="text" id="annee" value="2026-2027"></div>
-    <div><label for="site">Site web (bas de carte)</label><input type="text" id="site" value="www.votre-site.org"></div>
     <div><label for="logoFile">Logo (PNG ou JPG, facultatif)</label><input type="file" id="logoFile" accept="image/*"></div>
     <div><label for="photoFiles">Photos des membres (facultatif)</label><input type="file" id="photoFiles" accept="image/*" multiple></div>
     <div><label for="file">Fichier CSV des membres</label><input type="file" id="file" accept=".csv,text/csv"></div>
@@ -182,7 +181,7 @@ function drawCard(m){
   c.fillStyle="#475569";c.font=`500 18px ${F}`;c.textAlign="center";
   c.fillText("Le Président",X+85,586);c.fillText("Le Trésorier Général",X+269,586);
   c.textAlign="right";c.fillStyle="#64748B";c.font=`500 20px ${F}`;
-  c.fillText("Émis le "+new Date().toLocaleDateString("fr-FR"),W-40,568);c.fillText("© "+$("site").value,W-40,596);
+  c.fillText("Émis le "+new Date().toLocaleDateString("fr-FR"),W-40,586);
   c.textAlign="left";
   // fine bande tricolore (drapeau du Sénégal) en bas
   const fl=c.createLinearGradient(0,0,W,0);fl.addColorStop(0,"#00853F");fl.addColorStop(.38,"#00853F");fl.addColorStop(.5,"#FDEF42");fl.addColorStop(.62,"#E31B23");fl.addColorStop(1,"#E31B23");
@@ -239,7 +238,7 @@ $("photoFiles").onchange=e=>{
   Promise.all([...e.target.files].map(async f=>{const cv=await toCanvas(f);if(cv)photos.set(stem(f.name),cv)}))
     .then(()=>members.length&&render());
 };
-["assoc","sous","sigle","annee","site"].forEach(id=>$(id).oninput=()=>members.length&&render());
+["assoc","sous","sigle","annee"].forEach(id=>$(id).oninput=()=>members.length&&render());
 
 $("pdf").onclick=async()=>{
   await loadFonts();const list=current(),{jsPDF}=window.jspdf;
