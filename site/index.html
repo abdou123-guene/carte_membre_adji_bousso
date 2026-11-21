@@ -31,6 +31,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
 #info{color:var(--mute);margin:0 0 14px}
 #err{color:var(--red);font-weight:700}
+#warn{margin:0 0 14px;color:var(--mute);font-size:14px}
+#warn.bad{color:var(--red);font-weight:700;font-size:15px}
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
 .card{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:10px}
 .card canvas{width:100%;height:auto;border-radius:8px;box-shadow:0 0 0 1px var(--line)}
@@ -52,6 +54,9 @@ small{color:var(--mute)}
     <div><label for="assoc">Nom de l’association</label><input type="text" id="assoc" value="Association des Étudiants Sénégalais d’Avignon"></div>
     <div><label for="sous">Sous-titre</label><input type="text" id="sous" value="Carte de membre officielle"></div>
     <div><label for="sigle">Sigle</label><input type="text" id="sigle" value="AES"></div>
+    <div><label for="cle">Clé secrète de l’association</label>
+      <input type="password" id="cle" autocomplete="off" spellcheck="false" placeholder="Collez la clé ou générez-en une">
+      <div class="actions" style="margin-top:8px"><button type="button" id="genKey" class="alt sm">Générer une clé</button><button type="button" id="showKey" class="alt sm">Afficher</button></div></div>
     <div><label for="annee">Validité par défaut (si absente du CSV)</label><input type="text" id="annee" value="2026-2027"></div>
     <div><label for="logoFile">Logo (PNG ou JPG, facultatif)</label><input type="file" id="logoFile" accept="image/*"></div>
     <div><label for="photoFiles">Photos des membres (facultatif)</label><input type="file" id="photoFiles" accept="image/*" multiple></div>
@@ -64,10 +69,10 @@ small{color:var(--mute)}
     <button id="tpl" class="alt">Télécharger un CSV modèle</button>
     <button id="demo" class="alt">Voir un exemple</button>
   </div>
-  <p><small>Colonnes reconnues : nom, prénom, statut (Présidente, Trésorier, Membre actif…), validité, et en option université, ville, filière, niveau, année d’arrivée en France, numéro, photo. Seuls nom et prénom sont obligatoires ; le numéro est créé automatiquement s’il manque. Le séparateur « , » ou « ; » est détecté tout seul. Un champ vide n’apparaît pas sur la carte.<br>Photos : sélectionnez toutes les photos d’un coup. Chaque fichier est associé à son membre par le nom indiqué dans la colonne « photo » du CSV (ex. adji-bousso-seck.jpg), ou à défaut par « prénom nom » ou par le numéro du membre. Sans photo, la carte affiche une silhouette.<br><b>Plus simple :</b> après avoir chargé le CSV (ou cliqué sur « Voir un exemple »), utilisez le bouton « Ajouter une photo » sous chaque carte.</small></p>
+  <p><small>Colonnes reconnues : nom, prénom, statut (Présidente, Trésorier, Membre actif…), validité, et en option université, ville, filière, niveau, année d’arrivée en France, numéro, photo. Seuls nom et prénom sont obligatoires ; le numéro est créé automatiquement s’il manque. Le séparateur « , » ou « ; » est détecté tout seul. Un champ vide n’apparaît pas sur la carte.<br><b>Sécurité :</b> le matricule et le QR code sont calculés avec la clé secrète, donc impossibles à deviner ou à fabriquer sans elle. Utilisez toujours la même clé et ne la partagez qu’avec les personnes qui vérifient les cartes (page « verifier.html »).<br>Photos : sélectionnez toutes les photos d’un coup. Chaque fichier est associé à son membre par le nom indiqué dans la colonne « photo » du CSV (ex. adji-bousso-seck.jpg), ou à défaut par « prénom nom » ou par le numéro du membre. Sans photo, la carte affiche une silhouette.<br><b>Plus simple :</b> après avoir chargé le CSV (ou cliqué sur « Voir un exemple »), utilisez le bouton « Ajouter une photo » sous chaque carte.</small></p>
 </div>
 
-<p id="info"></p><p id="err"></p>
+<p id="warn"></p><p id="info"></p><p id="err"></p>
 <div id="grid"></div>
 <button id="more" class="alt" hidden>Afficher plus de cartes</button>
 </main>
@@ -81,12 +86,63 @@ const $=id=>document.getElementById(id);
 const W=1011,H=638; // 85,6 x 54 mm à 300 dpi
 const F='Inter,system-ui,sans-serif';
 let members=[];
+/* ===== Sécurité des cartes : HMAC-SHA-256 (synchrone, sans dépendance) ===== */
+const SHA_K=(()=>{const k=[];let n=2;while(k.length<64){let p=true;for(let i=2;i*i<=n;i++)if(n%i===0){p=false;break}if(p)k.push(Math.floor((Math.cbrt(n)%1)*4294967296));n++}return k})();
+function sha256(m){
+  const l=m.length,pl=((l+9+63)>>6)<<6,p=new Uint8Array(pl);p.set(m);p[l]=0x80;
+  const dv=new DataView(p.buffer);dv.setUint32(pl-4,(l*8)>>>0);dv.setUint32(pl-8,Math.floor(l*8/4294967296));
+  let h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const w=new Uint32Array(64);
+  for(let i=0;i<pl;i+=64){
+    for(let t=0;t<16;t++)w[t]=dv.getUint32(i+t*4);
+    for(let t=16;t<64;t++){const a=w[t-15],b=w[t-2];w[t]=(w[t-16]+((a>>>7|a<<25)^(a>>>18|a<<14)^(a>>>3))+w[t-7]+((b>>>17|b<<15)^(b>>>19|b<<13)^(b>>>10)))|0}
+    let[a,b,c,d,e,f,g,q]=h;
+    for(let t=0;t<64;t++){
+      const t1=(q+((e>>>6|e<<26)^(e>>>11|e<<21)^(e>>>25|e<<7))+((e&f)^(~e&g))+SHA_K[t]+w[t])|0;
+      const t2=(((a>>>2|a<<30)^(a>>>13|a<<19)^(a>>>22|a<<10))+((a&b)^(a&c)^(b&c)))|0;
+      q=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;
+    }
+    h=[h[0]+a|0,h[1]+b|0,h[2]+c|0,h[3]+d|0,h[4]+e|0,h[5]+f|0,h[6]+g|0,h[7]+q|0];
+  }
+  const o=new Uint8Array(32),ov=new DataView(o.buffer);h.forEach((x,i)=>ov.setUint32(i*4,x>>>0));return o;
+}
+function hmac(key,msg){
+  const te=new TextEncoder();let k=te.encode(key);if(k.length>64)k=sha256(k);
+  const ip=new Uint8Array(64).fill(0x36),op=new Uint8Array(64).fill(0x5c);k.forEach((x,i)=>{ip[i]^=x;op[i]^=x});
+  const m=te.encode(msg),a=new Uint8Array(64+m.length);a.set(ip);a.set(m,64);
+  const inner=sha256(a),b=new Uint8Array(96);b.set(op);b.set(inner,64);return sha256(b);
+}
+const B32="0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // alphabet sans I, L, O, U (pas de confusion à la lecture)
+function b32(bytes,n){let bits=0,val=0,out="";for(const b of bytes){val=((val<<8)|b)&0xffff;bits+=8;while(bits>=5&&out.length<n){out+=B32[(val>>>(bits-5))&31];bits-=5}val&=(1<<bits)-1}return out}
+const nrm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
+const fold=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\x20-\x7E]/g,"").replace(/\|/g,"/").trim();
+// matricule : 8 caractères imprévisibles liés au nom et au prénom (impossible à deviner sans la clé)
+function memberId(key,sigle,nom,prenom,dup){const t=b32(hmac(key,"id|"+nrm(nom)+"|"+nrm(prenom)+"|"+(dup||0)),8);return `${sigle}-${t.slice(0,4)}-${t.slice(4)}`}
+// sceau : 16 caractères (80 bits) liés au matricule, au nom, au prénom, au statut et à la validité
+function seal(key,mat,nom,prenom,statut,valid){return b32(hmac(key,"seal|"+[mat,nom,prenom,statut,valid].map(nrm).join("|")),16)}
+function qrPayload(key,mat,nom,prenom,statut,valid){
+  const f=[fold(nom).toUpperCase(),fold(prenom),fold(statut),fold(valid)];
+  return ["Q1",mat,...f,seal(key,mat,...f)].join("|");
+}
+function checkPayload(key,text){
+  const p=String(text||"").trim().split("|");
+  if(p.length!==7||p[0]!=="Q1")return{ok:false,why:"format"};
+  const[,mat,nom,prenom,statut,valid,tag]=p;
+  return{ok:seal(key,mat,nom,prenom,statut,valid)===tag,mat,nom,prenom,statut,valid};
+}
+function checkId(key,mat,nom,prenom){
+  const sigle=String(mat).trim().toUpperCase().split("-")[0];
+  for(let d=0;d<10;d++)if(memberId(key,sigle,nom,prenom,d)===String(mat).trim().toUpperCase())return true;return false;
+}
+
+const keyOf=()=>$("cle").value.trim();
+const matOf=m=>{const k=keyOf();return k?(m.num||memberId(k,$("sigle").value.trim()||"MBR",m.nom,m.prenom,m.dup)):""};
+
 
 const norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const KEYS={nom:["nom","lastname","name"],prenom:["prenom","prenoms","firstname"],univ:["universite","ecole","etablissement","univ"],ville:["ville","city"],num:["numero","numeromembre","nmembre","id","matricule"],statut:["statut","statutmembre","fonction","role","paye","paiement","cotisation"],validite:["validite","validejusqua","validiteannee","expiration"],filiere:["filiere","specialite","formation"],niveau:["niveau","annee","diplome"],arrivee:["anneedarriveeenfrance","anneearrivee","arrivee"],photo:["photo","image","portrait","fichierphoto","photographie"]};
 function pick(row,k){for(const h in row){if(KEYS[k].includes(norm(h)))return (row[h]||"").trim()}return ""}
 const isPaid=v=>["oui","paye","payee","ok","1","true","vrai","yes"].includes(norm(v));
-const numOf=m=>m.num||`${$("sigle").value}-${new Date().getFullYear()}-${String(m.idx).padStart(3,"0")}`;
 const statutOf=m=>!m.statut||isPaid(m.statut)?"Membre actif":m.statut.charAt(0).toUpperCase()+m.statut.slice(1);
 
 function fit(c,t,max,size,weight){let s=size;do{c.font=`${weight} ${s}px ${F}`;s-=2}while(c.measureText(t).width>max&&s>20)}
@@ -101,7 +157,7 @@ const photos=new Map(),manual=new Map(); // manual : photos ajoutées carte par 
 const stem=n=>norm(String(n).replace(/\.[^.]+$/,""));
 function photoFor(m){
   if(manual.has(m.idx))return manual.get(m.idx);
-  const ks=[m.photo&&stem(m.photo),norm(m.prenom+m.nom),norm(m.nom+m.prenom),norm(numOf(m))].filter(Boolean);
+  const ks=[m.photo&&stem(m.photo),norm(m.prenom+m.nom),norm(m.nom+m.prenom),m.num&&norm(m.num)].filter(Boolean);
   for(const k of ks)if(photos.has(k))return photos.get(k);
   return null;
 }
@@ -150,25 +206,26 @@ function drawCard(m){
   const D=88;
   if(logo&&logo.complete&&logo.naturalWidth){const k=Math.min(D/logo.naturalWidth,D/logo.naturalHeight),w=logo.naturalWidth*k,h=logo.naturalHeight*k;c.drawImage(logo,40+(D-w)/2,32+(D-h)/2,w,h)}
   const tx=150;c.fillStyle="#0B1220";c.font=`800 32px ${F}`;
-  const lines=wrap(c,$("assoc").value,660).slice(0,2),y0=70-(lines.length-1)*18;
+  const lines=wrap(c,$("assoc").value,640).slice(0,2),y0=70-(lines.length-1)*18;
   lines.forEach((t,i)=>c.fillText(t,tx,y0+i*38));
   c.fillStyle="#64748B";c.font=`500 24px ${F}`;c.fillText($("sous").value,tx,y0+(lines.length-1)*38+34);
   // QR (en haut à droite)
-  try{const q=qrcode(0,"M");q.addData(`${$("sigle").value}|${numOf(m)}`);q.make();
-    const n=q.getModuleCount(),s=Math.floor(104/n),sz=n*s,o=W-40-sz-8,qy=40;
+  const key=keyOf();
+  if(key)try{const q=qrcode(0,"M");q.addData(qrPayload(key,matOf(m),m.nom,m.prenom,statutOf(m),m.validite||$("annee").value));q.make();
+    const n=q.getModuleCount(),s=Math.max(3,Math.floor(150/n)),sz=n*s,o=W-40-sz-8,qy=28;
     c.save();c.fillStyle="#fff";c.shadowColor="rgba(15,23,42,.15)";c.shadowBlur=14;c.shadowOffsetY=4;rr(c,o-8,qy-8,sz+16,sz+16,14);c.fill();c.restore();
     c.fillStyle="#0B1220";for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))c.fillRect(o+k*s,qy+r*s,s,s)}catch(e){}
   // photo + matricule
   const PX=40,PY=150,PWD=270,PHT=350;
   const ph=photoFor(m);if(ph)drawPhoto(c,ph,PX,PY,PWD,PHT);else drawPlaceholder(c,PX,PY,PWD,PHT);
   c.textAlign="center";c.fillStyle="#64748B";c.font=`500 22px ${F}`;c.fillText("Matricule",PX+PWD/2,541);
-  c.fillStyle="#0B1220";fit(c,numOf(m),PWD+20,32,"700");c.fillText(numOf(m),PX+PWD/2,584);
+  const mat=matOf(m)||"Clé manquante";c.fillStyle=matOf(m)?"#0B1220":"#D62828";fit(c,mat,PWD+20,32,"700");c.fillText(mat,PX+PWD/2,584);
   c.textAlign="left";
   // identité
   const full=`${m.prenom} ${m.nom.toUpperCase()}`.trim();
-  c.fillStyle="#0B1220";fit(c,full,MX,72,"800");c.fillText(full,X,232,MX);
+  c.fillStyle="#0B1220";fit(c,full,MX,72,"800");c.fillText(full,X,238,MX);
   const role="Étudiant(e)"+(m.filiere?" en "+m.filiere:"");
-  c.fillStyle="#3B82F6";fit(c,role,MX,34,"600");c.fillText(role,X,282,MX);
+  c.fillStyle="#3B82F6";fit(c,role,MX,34,"600");c.fillText(role,X,288,MX);
   const flds=[["Statut",statutOf(m),0],["Niveau",m.niveau,0],["Université",[m.univ,m.ville].filter(Boolean).join(", "),1],["Validité",m.validite||$("annee").value,0],["En France depuis",m.arrivee,0]].filter(f=>f[1]);
   const rows=[];let cur=[];  // 2 colonnes ; l'université prend toute la ligne
   flds.forEach(f=>{if(f[2]){if(cur.length){rows.push(cur);cur=[]}rows.push([f])}else{cur.push(f);if(cur.length===2){rows.push(cur);cur=[]}}});
@@ -197,6 +254,7 @@ function load(text){
   members=res.data.map(r=>({nom:pick(r,"nom"),prenom:pick(r,"prenom"),univ:pick(r,"univ"),ville:pick(r,"ville"),num:pick(r,"num"),statut:pick(r,"statut"),validite:pick(r,"validite"),filiere:pick(r,"filiere"),niveau:pick(r,"niveau"),arrivee:pick(r,"arrivee"),photo:pick(r,"photo")}))
    .filter(m=>m.nom||m.prenom).map((m,i)=>({...m,idx:i+1}));
   if(!members.length){$("err").textContent="Aucun membre trouvé. Vérifiez que la première ligne contient les colonnes « nom » et « prénom ».";return}
+  const seen={};members.forEach(m=>{const k=nrm(m.nom)+"|"+nrm(m.prenom);m.dup=seen[k]===undefined?0:seen[k]+1;seen[k]=m.dup});
   render();
 }
 function current(){return members}
@@ -215,7 +273,7 @@ function cardEl(m){
   if(manual.has(m.idx)){const rm=document.createElement("button");rm.className="alt sm";rm.textContent="Retirer";
     rm.onclick=()=>{manual.delete(m.idx);fig.replaceWith(cardEl(m))};bar.appendChild(rm)}
   const dl=document.createElement("button");dl.className="alt sm";dl.textContent="PNG";dl.title="Télécharger cette carte";
-  dl.onclick=()=>save(drawCard(m).toDataURL("image/png"),`carte-${numOf(m)}.png`);bar.appendChild(dl);
+  dl.onclick=()=>{if(!keyOf()){updateWarn();return}save(drawCard(m).toDataURL("image/png"),`carte-${matOf(m)}.png`)};bar.appendChild(dl);
   fig.appendChild(bar);return fig;
 }
 const loadFonts=()=>Promise.all(["500","600","700","800"].map(w=>document.fonts.load(`${w} 40px Inter`))).catch(()=>{});
@@ -226,7 +284,7 @@ async function render(){
   $("info").textContent=`${list.length} carte(s) prête(s)`+(list.length>shown?` · ${shown} affichée(s)`:"")+(np?` · ${np} photo(s)`:"")+" · utilisez « Ajouter une photo » sous une carte";
   list.slice(0,shown).forEach(m=>g.appendChild(cardEl(m)));
   $("more").hidden=list.length<=shown;$("more").textContent=`Afficher plus de cartes (${list.length-shown} restantes)`;
-  $("pdf").disabled=$("zip").disabled=!list.length;
+  $("pdf").disabled=$("zip").disabled=!list.length||!keyOf();updateWarn();
 }
 $("more").onclick=()=>{shown+=12;render()};
 function save(url,name){const a=document.createElement("a");a.href=url;a.download=name;a.click()}
@@ -238,10 +296,20 @@ $("photoFiles").onchange=e=>{
   Promise.all([...e.target.files].map(async f=>{const cv=await toCanvas(f);if(cv)photos.set(stem(f.name),cv)}))
     .then(()=>members.length&&render());
 };
-["assoc","sous","sigle","annee"].forEach(id=>$(id).oninput=()=>members.length&&render());
+["assoc","sous","sigle","annee","cle"].forEach(id=>$(id).oninput=()=>members.length?render():updateWarn());
+function updateWarn(){const w=$("warn"),k=keyOf();
+  w.className=k?"":"bad";
+  w.textContent=k?"🔒 Matricules et QR codes sécurisés par votre clé. Conservez-la dans un endroit sûr : sans elle, impossible de vérifier ou de refaire les mêmes cartes.":"⚠ Entrez ou générez la clé secrète : sans elle, les cartes ne sont pas protégées et l’export est bloqué."}
+$("showKey").onclick=()=>{const i=$("cle");i.type=i.type==="password"?"text":"password";$("showKey").textContent=i.type==="password"?"Afficher":"Masquer"};
+$("genKey").onclick=()=>{
+  if(keyOf()&&!confirm("Une clé est déjà saisie. En générer une nouvelle change TOUS les matricules et rend les anciennes cartes invalides. Continuer ?"))return;
+  $("cle").value=b32(crypto.getRandomValues(new Uint8Array(20)),32).match(/.{4}/g).join("-");
+  $("cle").type="text";$("showKey").textContent="Masquer";members.length?render():updateWarn();
+};
+updateWarn();
 
 $("pdf").onclick=async()=>{
-  await loadFonts();const list=current(),{jsPDF}=window.jspdf;
+  if(!keyOf())return;await loadFonts();const list=current(),{jsPDF}=window.jspdf;
   if($("sheet").checked){
     const d=new jsPDF({unit:"mm",format:"a4"});
     list.forEach((m,i)=>{const p=i%10;if(i&&p===0)d.addPage();
@@ -254,8 +322,8 @@ $("pdf").onclick=async()=>{
   }
 };
 $("zip").onclick=async()=>{
-  await loadFonts();const z=new JSZip();
-  current().forEach(m=>z.file(`carte-${numOf(m)}.png`,drawCard(m).toDataURL("image/png").split(",")[1],{base64:true}));
+  if(!keyOf())return;await loadFonts();const z=new JSZip();
+  current().forEach(m=>z.file(`carte-${matOf(m)}.png`,drawCard(m).toDataURL("image/png").split(",")[1],{base64:true}));
   save(URL.createObjectURL(await z.generateAsync({type:"blob"})),"cartes-membres.zip");
 };
 const SAMPLE="Nom;Prénom;Statut;Validité\nSECK;Adji Bousso;Présidente;2026-2027\nDIOP;Moussa;Trésorier;2026-2027\nNDIAYE;Awa;Membre actif;2026-2027\n";
